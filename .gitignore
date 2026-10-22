@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+*.csv
+eval_cache.json
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Generated evaluation output
+eval_cache.json
+ragas_results.csv
+*.log
+
+# Local vector database
+db/chroma_db/
+
+# Downloaded model weights
+models/checkpoints/
+
+# Editor and OS files
+.vscode/
+.idea/
+.pi/
+.DS_Store
+Thumbs.db

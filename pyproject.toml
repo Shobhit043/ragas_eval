@@ -1,0 +1,15 @@
+[project]
+name = "ragas-project"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "chromadb==1.5.9",
+    "instructor==1.17.0",
+    "langchain-community==0.3.31",
+    "numpy==2.5.4",
+    "openai==3.3.0",
+    "pandas==3.1.0",
+    "python-dotenv==1.2.4",
+    "ragas==0.4.3",
+    "sentence-transformers==6.2.0",
+]
