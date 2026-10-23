@@ -23,8 +23,20 @@ The UI does not write uploads, results, plots, or a cache into the project. A ne
 ### CLI
 
 - Index local files from `documents/`.
-- Evaluate the questions in `eval_dataset.json`.
+- Evaluate a question/reference dataset file you provide.
 - Write `ragas_results.csv`, PNG plots, and a resumable `eval_cache.json`.
+
+## UI preview
+
+### Ask a question
+
+![Ask a question tab](assets/ui-ask-question.png)
+
+### Batch evaluation
+
+![Batch evaluation tab](assets/ui-batch-evaluation.png)
+
+The screenshots use the sample corpus. Documents, answers, and results stay in the Streamlit session.
 
 ## How it works
 
@@ -170,6 +182,22 @@ It helps when:
 
 The cache is cleared when the index is rebuilt. It is not shared between users and is lost when the session ends.
 
+## Example batch results
+
+The UI and CLI use the same plotting code. These images come from an example sample-corpus run; your scores will differ.
+
+### Average score per metric
+
+![Average score per metric](assets/average_metric_scores.png)
+
+### Metric scores by question
+
+![Metric scores by question](assets/metric_scores_by_question.png)
+
+### Score distribution per metric
+
+![Score distribution per metric](assets/metric_score_distributions.png)
+
 ## Metrics
 
 The project uses eleven RAGAS metrics:
@@ -221,7 +249,7 @@ Use `--db-path` and `--collection` to choose the ChromaDB location and collectio
 
 ### Evaluate a dataset
 
-Edit `eval_dataset.json`:
+Create a JSON file with your questions and reference answers:
 
 ```json
 [
@@ -232,15 +260,21 @@ Edit `eval_dataset.json`:
 ]
 ```
 
-Both `question` and `reference` are required in the CLI dataset.
+Both `question` and `reference` are required in the CLI dataset. The CLI does not include a built-in dataset.
 
-Run the full evaluation:
+Run the evaluation with the dataset path:
 
 ```bash
-uv run eval.py
+uv run eval.py --dataset questions.json
 ```
 
-`eval.py` rebuilds the local index from `documents/`, evaluates every dataset item with all eleven metrics, and writes:
+Use `--documents-dir` to evaluate files from a different folder:
+
+```bash
+uv run eval.py --dataset questions.json --documents-dir documents
+```
+
+`eval.py` rebuilds the local index, evaluates every dataset item with all eleven metrics, and writes:
 
 - `ragas_results.csv`
 - `plots/average_metric_scores.png`
@@ -248,7 +282,7 @@ uv run eval.py
 - `plots/metric_score_distributions.png`
 - `eval_cache.json`
 
-The CLI cache is keyed by question and metric. It is pruned when questions are removed from `eval_dataset.json`. Cached answers are reused only when the retrieved contexts still match, and scores are discarded when the reference or answer changes.
+The CLI cache is keyed by question and metric. It is pruned when questions are removed from the dataset file. Cached answers are reused only when the retrieved contexts still match, and scores are discarded when the reference or answer changes.
 
 ## Project layout
 
@@ -269,8 +303,7 @@ The CLI cache is keyed by question and metric. It is pruned when questions are r
 |   `-- model.py                # Downloads and loads all-MiniLM-L6-v2
 |-- documents/
 |   `-- sample_corpus.txt       # Sample CLI corpus
-|-- eval_dataset.json           # CLI questions and reference answers
-|-- assets/                     # Example chart images
+|-- assets/                     # UI screenshots and example charts used in this README
 |-- tests/                      # Test suite with fake models and temporary databases
 |-- .streamlit/config.toml      # Streamlit settings
 |-- .github/workflows/ci.yml    # Lint, format check, and tests
