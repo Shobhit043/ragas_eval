@@ -197,8 +197,16 @@ async def test_main_writes_results_and_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(eval, "load_chunks", lambda directory: chunks)
     monkeypatch.setattr(
         eval,
+        "parse_args",
+        lambda: SimpleNamespace(
+            dataset=tmp_path / "dataset.json",
+            documents_dir=tmp_path,
+        ),
+    )
+    monkeypatch.setattr(
+        eval,
         "load_evaluation_dataset",
-        lambda: [
+        lambda path: [
             {"question": "q1", "reference": "r1"},
             {"question": "q2", "reference": "r2"},
         ],

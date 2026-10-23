@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 from pathlib import Path
@@ -27,11 +28,29 @@ from plots import PLOTS_DIR, generate_plots
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DOCUMENTS_DIR = DEFAULT_DOCUMENTS_DIR
-DATASET_PATH = PROJECT_ROOT / "eval_dataset.json"
 RESULTS_PATH = PROJECT_ROOT / "ragas_results.csv"
 
 
-def load_evaluation_dataset(path=DATASET_PATH):
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Evaluate question/reference pairs against local documents."
+    )
+    parser.add_argument(
+        "--dataset",
+        type=Path,
+        required=True,
+        help="JSON file containing a list of question/reference objects.",
+    )
+    parser.add_argument(
+        "--documents-dir",
+        type=Path,
+        default=DOCUMENTS_DIR,
+        help="Directory to scan recursively for .pdf and .txt files.",
+    )
+    return parser.parse_args()
+
+
+def load_evaluation_dataset(path):
     """Load question/reference pairs and fail early on malformed input."""
     with open(path, encoding="utf-8") as file:
         dataset = json.load(file)
@@ -198,8 +217,9 @@ async def evaluate_dataset(dataset, db_client, metrics, cache, verbose=False, sa
 
 
 async def main():
-    dataset = load_evaluation_dataset()
-    chunks = load_chunks(DOCUMENTS_DIR)
+    args = parse_args()
+    dataset = load_evaluation_dataset(args.dataset)
+    chunks = load_chunks(args.documents_dir)
 
     model = EmbeddModel().load_model()
     embeddings = create_embeddings(model)
