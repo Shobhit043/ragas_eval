@@ -75,6 +75,18 @@ python eval.py
 
 The first run downloads the embedding model to `models/checkpoints/` (about 90 MB) and is slower than subsequent runs.
 
+## Development
+
+```bash
+uv sync
+
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
+```
+
+The tests use fake models and temporary directories, so they do not need an API key or a model download. CI runs linting, formatting checks, and the test suite on every push and pull request (`.github/workflows/ci.yml`).
+
 ## Output
 
 - `ragas_results.csv` — one row per question with the answer, retrieved contexts, reference answer, and metric scores.
@@ -123,7 +135,7 @@ The evaluation in `eval.py` uses the RAGAS `collections` metrics:
 
 All scores are floats between 0 and 1. Every metric except `noise_sensitivity` is better when higher.
 
-Adding a metric is a single entry in the `METRICS` dict in `eval.py`: provide the scorer and the sample fields it needs (`user_input`, `response`, `retrieved_contexts`, `reference`). The pipeline handles inputs, caching, CSV columns, averages, and plots automatically.
+Adding a metric is a single entry in `build_metrics()` in `eval.py`: provide the scorer and the sample fields it needs (`user_input`, `response`, `retrieved_contexts`, `reference`). The pipeline handles inputs, caching, CSV columns, averages, and plots automatically.
 
 > Each LLM-based metric adds API calls per question. Trim the `METRICS` dict if you want a cheaper run.
 
@@ -143,7 +155,9 @@ Adding a metric is a single entry in the `METRICS` dict in `eval.py`: provide th
 │   └── embedding_func.py   # Chroma embedding function
 ├── models/
 │   └── model.py            # Downloads/loads all-MiniLM-L6-v2
-├── pyproject.toml          # Project metadata and direct dependencies
+├── tests/                  # Pytest suite with fake models and temp DBs
+├── .github/workflows/ci.yml # Lint, format check, and tests
+├── pyproject.toml          # Project metadata, dependencies, and tool config
 └── uv.lock                 # Fully resolved dependency lockfile
 ```
 
