@@ -61,46 +61,6 @@ user_inputs = [
     "Which Ragas metric evaluates whether retrieved context is relevant?",
 
     "How can I measure whether the retrieved documents contain enough information to answer a question?",
-
-    "Does providing retrieved context guarantee that an LLM will not hallucinate?",
-
-    "What are the disadvantages of retrieving too many document chunks?",
-
-    "How can metadata filtering improve vector search?",
-
-    "What is the Sentence Transformers library used for?",
-
-    "How is a vector database different from a traditional relational database?",
-
-    "Why might a RAG system generate an incorrect answer even when using a capable language model?",
-
-    "Describe the complete flow of a basic RAG pipeline.",
-
-    "Can a response have high faithfulness but still contain incorrect information?",
-
-    "What is the difference between context precision and context recall?",
-
-    "Why are overlapping chunks used during document splitting?",
-
-    "What information is typically included in a RAG prompt?",
-
-    "What year was LangChain founded, and who was its first employee?",
-
-    "Which exact embedding model and vector dimensions are used by ChromaDB in this dataset?",
-
-    "What is the current price of ChromaDB's enterprise subscription?",
-
-    "If I retrieve five documents instead of one, will context precision always improve?",
-
-    "How do embedding models convert text into numerical vectors?",
-
-    "Why should retrieval and generation be evaluated separately?",
-
-    "What happens when a RAG system retrieves documents that are related to the question but do not contain the answer?",
-
-    "How does hybrid search differ from semantic search?",
-
-    "What is the relationship between chunk size, retrieval quality, and the LLM context window?"
 ]
 
 references = [
