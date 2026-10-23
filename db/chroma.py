@@ -1,85 +1,88 @@
-import os
+from pathlib import Path
 
 import chromadb
 
 from db.embedding_func import EmbeddingFunction
+from document_loader import DocumentChunk
 
 
 class DB:
     def __init__(self, db_path="chroma_db", collection_name="data", model=None):
-        cwd = os.path.dirname(os.path.realpath(__file__))
-        if db_path == "chroma_db":
-            db_path = os.path.join(cwd, db_path)
-
-        os.makedirs(db_path, exist_ok=True)
-
         if model is None:
             raise ValueError("model must be a SentenceTransformer instance")
 
-        self.client = chromadb.PersistentClient(path=db_path)
-        self.llm_ef = EmbeddingFunction(model)
-        self.collection = self.client.get_or_create_collection(
-            name=collection_name,
-            embedding_function=self.llm_ef,
+        if db_path == "chroma_db":
+            db_path = Path(__file__).resolve().parent / db_path
+
+        Path(db_path).mkdir(parents=True, exist_ok=True)
+
+        self.client = chromadb.PersistentClient(path=str(db_path))
+        self.collection_name = collection_name
+        self.embedding_function = EmbeddingFunction(model)
+        self.collection = self._create_collection()
+
+    def _create_collection(self):
+        return self.client.get_or_create_collection(
+            name=self.collection_name,
+            embedding_function=self.embedding_function,
         )
-        self.num_docs = self.collection.count()
 
-    def addDocs(self, docs=None, metadata=None):
-        if docs is None:
-            raise ValueError("must pass string or list of string.")
+    @property
+    def num_docs(self):
+        return self.collection.count()
 
-        if isinstance(docs, str):
-            docs = [docs]
+    def add_documents(self, chunks: list[DocumentChunk], batch_size: int = 500):
+        """Insert or update chunks using their stable IDs."""
+        if not chunks:
+            return
+        if batch_size <= 0:
+            raise ValueError("batch_size must be greater than zero")
 
-        start = self.num_docs
-        self.collection.add(
-            documents=docs,
-            ids=[str(i) for i in range(start, start + len(docs))],
-            metadatas=metadata,
-        )
-        self.num_docs = self.collection.count()
+        for start in range(0, len(chunks), batch_size):
+            batch = chunks[start : start + batch_size]
+            self.collection.upsert(
+                ids=[chunk["id"] for chunk in batch],
+                documents=[chunk["text"] for chunk in batch],
+                metadatas=[chunk["metadata"] for chunk in batch],
+            )
 
-    def semanticSearch(self, q=None):
-        if q is None:
-            raise ValueError("no query passed or None is passed.")
-        if not isinstance(q, str) and not isinstance(q, list):
-            raise ValueError("q must be a string or a list of strings")
-        if isinstance(q, str):
-            q = [q]
+    def replace_documents(self, chunks: list[DocumentChunk]):
+        """Replace the collection contents with the supplied chunks."""
+        self.clear()
+        self.add_documents(chunks)
 
+    def search(self, query: str | list[str], k: int = 5) -> list[list[str]]:
+        """Return up to ``k`` document chunks for each query."""
+        if k <= 0:
+            raise ValueError("k must be greater than zero")
+        if isinstance(query, str):
+            queries = [query]
+        elif isinstance(query, list):
+            queries = query
+        else:
+            raise ValueError("query must be a string or a list of strings")
+
+        if not queries:
+            raise ValueError("query must not be empty")
         if self.num_docs == 0:
             return []
 
         results = self.collection.query(
-            query_texts=q,
-            n_results=min(5, self.num_docs),
+            query_texts=queries,
+            n_results=min(k, self.num_docs),
         )
-        return results["documents"]
+        return results.get("documents") or []
 
-    def remove(self, target_id=None):
-        if self.num_docs == 0:
-            print("DB is already empty")
-            return
+    def delete(self, document_id: str) -> bool:
+        """Delete one document and report whether the collection changed."""
+        if not isinstance(document_id, str) or not document_id:
+            raise ValueError("document_id must be a non-empty string")
 
-        if target_id is None:
-            raise ValueError("must pass target_id of document")
-
-        if not isinstance(target_id, str):
-            raise ValueError("target_id must be a string")
-
-        try:
-            self.collection.delete(ids=[target_id])
-            self.num_docs = self.collection.count()
-        except Exception:
-            print("id not found in db")
+        before = self.num_docs
+        self.collection.delete(ids=[document_id])
+        return self.num_docs < before
 
     def clear(self):
-        existing = self.collection.get()
-
-        if not existing["ids"]:
-            print("DB is already empty")
-            return
-
-        self.collection.delete(ids=existing["ids"])
-        self.num_docs = 0
-        print("DB cleared!")
+        """Remove the collection and recreate it empty."""
+        self.client.delete_collection(name=self.collection_name)
+        self.collection = self._create_collection()

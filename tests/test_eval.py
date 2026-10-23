@@ -1,6 +1,8 @@
+import json
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 
 import eval
 
@@ -9,7 +11,7 @@ class FakeDB:
     def __init__(self, results=None):
         self.results = results if results is not None else [["context"]]
 
-    def semanticSearch(self, question):
+    def search(self, question):
         return self.results
 
 
@@ -138,16 +140,41 @@ async def test_ensure_answer_regenerates_when_contexts_change(monkeypatch):
     assert len(saved) == 1
 
 
+def test_load_evaluation_dataset_returns_items(tmp_path):
+    path = tmp_path / "dataset.json"
+    dataset = [{"question": "q1", "reference": "r1"}]
+    path.write_text(json.dumps(dataset), encoding="utf-8")
+
+    assert eval.load_evaluation_dataset(path) == dataset
+
+
+def test_load_evaluation_dataset_rejects_missing_fields(tmp_path):
+    path = tmp_path / "dataset.json"
+    path.write_text(json.dumps([{"question": "q1"}]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="question.*reference"):
+        eval.load_evaluation_dataset(path)
+
+
 async def test_main_writes_results_and_cache(tmp_path, monkeypatch):
     class FakeRuntimeDB:
-        def clear(self):
-            return None
+        def __init__(self):
+            self.chunks = []
 
-        def addDocs(self, docs=None, metadata=None):
-            return None
+        def replace_documents(self, chunks):
+            self.chunks = chunks
 
-        def semanticSearch(self, question):
+        def search(self, question):
             return [["context"]]
+
+    runtime_db = FakeRuntimeDB()
+    chunks = [
+        {
+            "id": "chunk-1",
+            "text": "document",
+            "metadata": {"source": "doc.txt", "chunk_index": 0},
+        }
+    ]
 
     async def fake_answer(context, question):
         return f"answer to {question}"
@@ -163,21 +190,28 @@ async def test_main_writes_results_and_cache(tmp_path, monkeypatch):
 
     monkeypatch.setattr(eval, "EmbeddModel", lambda: SimpleNamespace(load_model=lambda: object()))
     monkeypatch.setattr(eval, "create_embeddings", lambda model: object())
-    monkeypatch.setattr(eval, "DB", lambda model: FakeRuntimeDB())
+    monkeypatch.setattr(eval, "DB", lambda model: runtime_db)
     monkeypatch.setattr(eval, "build_metrics", lambda llm, embeddings: metrics)
     monkeypatch.setattr(eval, "load_cache", lambda: cache)
     monkeypatch.setattr(eval, "save_cache", lambda data: None)
+    monkeypatch.setattr(eval, "load_chunks", lambda directory: chunks)
+    monkeypatch.setattr(
+        eval,
+        "load_evaluation_dataset",
+        lambda: [
+            {"question": "q1", "reference": "r1"},
+            {"question": "q2", "reference": "r2"},
+        ],
+    )
     monkeypatch.setattr(eval, "generate_answer", fake_answer)
     monkeypatch.setattr(eval, "generate_plots", lambda df, m, out: [])
-    monkeypatch.setattr(eval, "user_inputs", ["q1", "q2"])
-    monkeypatch.setattr(eval, "references", ["r1", "r2"])
-    monkeypatch.setattr(eval, "docs", ["doc"])
     monkeypatch.setattr(eval, "RESULTS_PATH", str(results_path))
     monkeypatch.setattr(eval, "PLOTS_DIR", str(tmp_path / "plots"))
 
     await eval.main()
 
     results = pd.read_csv(results_path)
+    assert runtime_db.chunks == chunks
     assert results["user_input"].tolist() == ["q1", "q2"]
     assert results["semantic_similarity"].tolist() == [0.8, 0.8]
     assert cache["questions"]["q1"]["metrics"]["semantic_similarity"] == 0.8

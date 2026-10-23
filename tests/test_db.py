@@ -23,55 +23,108 @@ class FakeModel:
         return np.array(vectors)
 
 
+def make_chunks(*texts):
+    return [
+        {
+            "id": str(index),
+            "text": text,
+            "metadata": {"source": "test.txt", "chunk_index": index},
+        }
+        for index, text in enumerate(texts)
+    ]
+
+
 @pytest.fixture
 def db(tmp_path):
     return DB(db_path=str(tmp_path / "chroma"), model=FakeModel())
 
 
 def test_add_documents_and_search(db):
-    db.addDocs(["alpha", "beta", "gamma"])
+    db.add_documents(make_chunks("alpha", "beta", "gamma"))
 
     assert db.num_docs == 3
-    results = db.semanticSearch("alpha")
+    results = db.search("alpha")
     assert len(results) == 1
     assert set(results[0]) == {"alpha", "beta", "gamma"}
 
 
-def test_add_single_string_document(db):
-    db.addDocs("alpha")
+def test_add_documents_preserves_metadata(db):
+    db.add_documents(make_chunks("alpha"))
+
+    stored = db.collection.get(include=["metadatas"])
+
+    assert stored["metadatas"] == [{"source": "test.txt", "chunk_index": 0}]
+
+
+def test_add_documents_batches_requests(db):
+    db.add_documents(make_chunks("alpha", "beta", "gamma"), batch_size=1)
+
+    assert db.num_docs == 3
+
+
+def test_upsert_updates_existing_chunk(db):
+    db.add_documents(make_chunks("alpha"))
+    db.add_documents(
+        [
+            {
+                "id": "0",
+                "text": "updated alpha",
+                "metadata": {"source": "test.txt", "chunk_index": 0},
+            }
+        ]
+    )
 
     assert db.num_docs == 1
-    assert db.semanticSearch("alpha")[0] == ["alpha"]
+    assert db.search("updated alpha")[0] == ["updated alpha"]
+
+
+def test_replace_documents_removes_stale_chunks(db):
+    db.add_documents(make_chunks("alpha", "beta"))
+
+    db.replace_documents(make_chunks("gamma"))
+
+    assert db.num_docs == 1
+    assert db.search("gamma")[0] == ["gamma"]
 
 
 def test_search_empty_database_returns_empty_list(db):
-    assert db.semanticSearch("anything") == []
+    assert db.search("anything") == []
 
 
-def test_remove_document(db):
-    db.addDocs(["alpha", "beta"])
-    doc_id = db.collection.get()["ids"][0]
+def test_search_rejects_empty_query(db):
+    with pytest.raises(ValueError, match="must not be empty"):
+        db.search([])
 
-    db.remove(doc_id)
+
+def test_delete_document(db):
+    db.add_documents(make_chunks("alpha", "beta"))
+
+    assert db.delete("0") is True
 
     assert db.num_docs == 1
     assert len(db.collection.get()["ids"]) == 1
 
 
+def test_delete_unknown_document_returns_false(db):
+    db.add_documents(make_chunks("alpha"))
+
+    assert db.delete("missing") is False
+
+
 def test_clear_database(db):
-    db.addDocs(["alpha", "beta"])
+    db.add_documents(make_chunks("alpha", "beta"))
 
     db.clear()
 
     assert db.num_docs == 0
-    assert db.semanticSearch("alpha") == []
+    assert db.search("alpha") == []
 
 
 def test_document_count_survives_reopen(tmp_path):
     path = str(tmp_path / "chroma")
-    DB(db_path=path, model=FakeModel()).addDocs(["alpha", "beta"])
+    DB(db_path=path, model=FakeModel()).add_documents(make_chunks("alpha", "beta"))
 
     reopened = DB(db_path=path, model=FakeModel())
 
     assert reopened.num_docs == 2
-    assert set(reopened.semanticSearch("alpha")[0]) == {"alpha", "beta"}
+    assert set(reopened.search("alpha")[0]) == {"alpha", "beta"}

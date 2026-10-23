@@ -1,4 +1,6 @@
 import asyncio
+import json
+from pathlib import Path
 
 import pandas as pd
 from ragas.metrics.collections import (
@@ -16,70 +18,85 @@ from ragas.metrics.collections import (
 )
 
 from cache import load_cache, prune_cache, save_cache
-from data import docs, references, user_inputs
 from db.chroma import DB
+from document_loader import DEFAULT_DOCUMENTS_DIR, load_chunks
 from embeddings import create_embeddings
 from llm import generate_answer, ragas_llm, with_retries
 from models.model import EmbeddModel
 from plots import PLOTS_DIR, generate_plots
 
-RESULTS_PATH = "ragas_results.csv"
+PROJECT_ROOT = Path(__file__).resolve().parent
+DOCUMENTS_DIR = DEFAULT_DOCUMENTS_DIR
+DATASET_PATH = PROJECT_ROOT / "eval_dataset.json"
+RESULTS_PATH = PROJECT_ROOT / "ragas_results.csv"
+
+
+def load_evaluation_dataset(path=DATASET_PATH):
+    """Load question/reference pairs and fail early on malformed input."""
+    with open(path, encoding="utf-8") as file:
+        dataset = json.load(file)
+
+    if not isinstance(dataset, list) or not dataset:
+        raise ValueError(f"Evaluation dataset must be a non-empty list: {path}")
+
+    for index, item in enumerate(dataset, start=1):
+        if not isinstance(item, dict) or not item.get("question") or not item.get("reference"):
+            raise ValueError(
+                "Each dataset item needs a non-empty 'question' and 'reference' "
+                f"(item {index} in {path})"
+            )
+
+    return dataset
+
+
+METRIC_INPUTS = {
+    "answer_relevancy": ("user_input", "response"),
+    "faithfulness": ("user_input", "response", "retrieved_contexts"),
+    "answer_correctness": ("user_input", "response", "reference"),
+    "factual_correctness": ("response", "reference"),
+    "semantic_similarity": ("reference", "response"),
+    "context_precision": ("user_input", "reference", "retrieved_contexts"),
+    "context_recall": ("user_input", "reference", "retrieved_contexts"),
+    "context_entity_recall": ("reference", "retrieved_contexts"),
+    "response_groundedness": ("response", "retrieved_contexts"),
+    "context_utilization": ("user_input", "response", "retrieved_contexts"),
+    "noise_sensitivity": ("user_input", "response", "reference", "retrieved_contexts"),
+}
+
+LOWER_IS_BETTER = {"noise_sensitivity"}
 
 
 def build_metrics(llm, embeddings):
     """Create the metric scorers and declare the sample fields each one needs."""
-
-    return {
-        "answer_relevancy": {
-            "scorer": AnswerRelevancy(llm=llm, embeddings=embeddings),
-            "inputs": ("user_input", "response"),
-        },
-        "faithfulness": {
-            "scorer": Faithfulness(llm=llm),
-            "inputs": ("user_input", "response", "retrieved_contexts"),
-        },
-        "answer_correctness": {
-            "scorer": AnswerCorrectness(llm=llm, embeddings=embeddings),
-            "inputs": ("user_input", "response", "reference"),
-        },
-        "factual_correctness": {
-            "scorer": FactualCorrectness(llm=llm),
-            "inputs": ("response", "reference"),
-        },
-        "semantic_similarity": {
-            "scorer": SemanticSimilarity(embeddings=embeddings),
-            "inputs": ("reference", "response"),
-        },
-        "context_precision": {
-            "scorer": ContextPrecision(llm=llm),
-            "inputs": ("user_input", "reference", "retrieved_contexts"),
-        },
-        "context_recall": {
-            "scorer": ContextRecall(llm=llm),
-            "inputs": ("user_input", "reference", "retrieved_contexts"),
-        },
-        "context_entity_recall": {
-            "scorer": ContextEntityRecall(llm=llm),
-            "inputs": ("reference", "retrieved_contexts"),
-        },
-        "response_groundedness": {
-            "scorer": ResponseGroundedness(llm=llm),
-            "inputs": ("response", "retrieved_contexts"),
-        },
-        "context_utilization": {
-            "scorer": ContextUtilization(llm=llm),
-            "inputs": ("user_input", "response", "retrieved_contexts"),
-        },
-        "noise_sensitivity": {
-            "scorer": NoiseSensitivity(llm=llm),
-            "inputs": ("user_input", "response", "reference", "retrieved_contexts"),
-            "lower_is_better": True,
-        },
+    scorers = {
+        "answer_relevancy": AnswerRelevancy(llm=llm, embeddings=embeddings),
+        "faithfulness": Faithfulness(llm=llm),
+        "answer_correctness": AnswerCorrectness(llm=llm, embeddings=embeddings),
+        "factual_correctness": FactualCorrectness(llm=llm),
+        "semantic_similarity": SemanticSimilarity(embeddings=embeddings),
+        "context_precision": ContextPrecision(llm=llm),
+        "context_recall": ContextRecall(llm=llm),
+        "context_entity_recall": ContextEntityRecall(llm=llm),
+        "response_groundedness": ResponseGroundedness(llm=llm),
+        "context_utilization": ContextUtilization(llm=llm),
+        "noise_sensitivity": NoiseSensitivity(llm=llm),
     }
+
+    metrics = {}
+
+    for name, inputs in METRIC_INPUTS.items():
+        spec = {"scorer": scorers[name], "inputs": inputs}
+
+        if name in LOWER_IS_BETTER:
+            spec["lower_is_better"] = True
+
+        metrics[name] = spec
+
+    return metrics
 
 
 def retrieve_contexts(db_client, question):
-    results = db_client.semanticSearch(question)
+    results = db_client.search(question)
 
     if not results:
         return []
@@ -129,23 +146,27 @@ async def score_metric(spec, sample):
 
 
 async def main():
+    dataset = load_evaluation_dataset()
+    chunks = load_chunks(DOCUMENTS_DIR)
+
     model = EmbeddModel().load_model()
     embeddings = create_embeddings(model)
     db_client = DB(model=model)
     metrics = build_metrics(ragas_llm, embeddings)
 
-    db_client.clear()
-    db_client.addDocs(docs=docs)
+    db_client.replace_documents(chunks)
 
     cache = load_cache()
+    questions = [item["question"] for item in dataset]
 
-    if prune_cache(cache, user_inputs):
+    if prune_cache(cache, questions):
         save_cache(cache)
 
     rows = []
 
-    for index, question in enumerate(user_inputs):
-        reference = references[index]
+    for item in dataset:
+        question = item["question"]
+        reference = item["reference"]
         entry, entry_updated = prepare_entry(cache, question, reference)
 
         if entry_updated:

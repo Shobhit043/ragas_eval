@@ -1,0 +1,39 @@
+LangChain is an open-source framework for developing applications powered by large language models. It provides components for prompts, model calls, retrieval, tool usage, and multi-step application workflows.
+
+Chroma is an open-source AI application database commonly used to store embeddings and perform vector similarity search. A collection stores records containing IDs, documents, metadata, and optionally embeddings.
+
+Text embeddings represent text as numerical vectors. Semantically similar pieces of text tend to have nearby vectors in the embedding space. Embeddings enable semantic search, clustering, and similarity-based retrieval.
+
+Retrieval-Augmented Generation (RAG) combines information retrieval with language model generation. A retriever first finds relevant documents for a query. The retrieved content is then provided to the language model as context for generating an answer.
+
+Document chunking divides large documents into smaller text segments before indexing. Chunking helps retrieve relevant sections instead of entire documents. Chunks that are too small may lose context, while chunks that are too large may contain irrelevant information and exceed the model's context budget. Overlapping chunks can preserve information across boundaries.
+
+Keyword search primarily matches query terms against document terms. Semantic search uses representations such as embeddings to identify meaning-related content, even when the query and document use different words. Hybrid search combines keyword and semantic retrieval.
+
+Cosine similarity measures the cosine of the angle between two nonzero vectors. It is commonly used to compare text embeddings. A higher cosine similarity generally indicates greater directional similarity, but the interpretation depends on the embedding model and application.
+
+RAG evaluation measures different aspects of a retrieval-augmented generation system. Answer relevancy evaluates whether the response addresses the user's question. Faithfulness measures whether the response is supported by the retrieved context. Context precision measures how relevant the retrieved context is. Context recall measures how much of the information needed from the reference answer is captured by the retrieved context.
+
+Ragas is a framework for evaluating LLM applications, including retrieval-augmented generation systems. Its metrics can evaluate generated responses, retrieved contexts, and reference answers. Evaluation datasets commonly include a user input, response, retrieved contexts, and reference.
+
+A hallucination occurs when a language model generates information that is false, unsupported, or not justified by the available evidence. In a RAG application, providing retrieved context can help ground answers, but retrieval alone does not guarantee that every generated claim is true.
+
+Top-k retrieval returns up to k results selected according to a retrieval ranking or similarity measure. Increasing k can improve coverage but may introduce irrelevant context. The appropriate value depends on document quality, query complexity, context limits, and the retrieval system.
+
+Metadata filtering restricts retrieval using structured attributes associated with documents, such as category, date, source, or author. A vector database can combine metadata filters with similarity search to find semantically relevant records within a specified subset.
+
+Sentence Transformers is a Python library for generating dense vector representations of sentences, paragraphs, and other text. These embeddings can be used for semantic search, clustering, and similarity comparison. The embedding model determines the representation and vector dimensionality.
+
+A vector database stores vector representations and supports operations such as similarity search. Unlike a traditional relational database query that primarily matches structured fields, vector search retrieves records based on the similarity between numerical vectors.
+
+Retrieval quality depends on the embedding model, document preprocessing, chunk size, similarity function, and number of retrieved results. Poor retrieval can cause a language model to produce incomplete or unsupported answers even when the model itself is capable of answering the question.
+
+In a RAG pipeline, the user submits a query, the system retrieves relevant document chunks, and the language model generates an answer using those chunks. Retrieval and generation are separate stages, so their quality should be evaluated independently.
+
+Faithfulness and answer correctness are not identical. A response may faithfully repeat incorrect information present in retrieved documents. Faithfulness measures support from the provided context, while factual correctness concerns whether the claims are actually true.
+
+Context precision and context recall measure different aspects of retrieval. High context precision means retrieved chunks are mostly relevant. High context recall means the retrieved chunks contain most of the information needed to answer the question.
+
+Overlapping chunks share some text with neighboring chunks. This can preserve relationships between sentences that would otherwise be split across chunk boundaries. However, excessive overlap increases the number of stored chunks and may produce redundant retrieval results.
+
+An LLM prompt contains instructions and input information supplied to a language model. In a RAG application, the prompt commonly includes the user's question and retrieved document context. The model uses this information to generate a response, but prompt instructions do not guarantee factual accuracy.
