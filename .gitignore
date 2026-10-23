@@ -26,6 +26,7 @@ ENV/
 # Generated evaluation output
 eval_cache.json
 ragas_results.csv
+plots/
 *.log
 
 # Local vector database
