@@ -1,17 +1,16 @@
+import asyncio
 import os
 import random
-import asyncio
 
 import instructor
 from dotenv import load_dotenv
 from openai import (
-    AsyncOpenAI,
     APIConnectionError,
     APITimeoutError,
+    AsyncOpenAI,
     InternalServerError,
     RateLimitError,
 )
-
 from ragas.llms.base import InstructorLLM
 
 load_dotenv()
@@ -83,8 +82,7 @@ def build_answer_messages(context, question):
         {
             "role": "system",
             "content": (
-                "You are a helpful assistant. "
-                f"Use the following context to answer:\n\n{context}"
+                f"You are a helpful assistant. Use the following context to answer:\n\n{context}"
             ),
         },
         {"role": "user", "content": question},

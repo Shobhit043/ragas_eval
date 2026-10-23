@@ -63,9 +63,7 @@ def plot_metric_heatmap(df, metrics, names, output_dir):
     labels = [format_metric_name(name) for name in names]
     questions = [truncate(question, 55) for question in df["user_input"]]
 
-    fig, ax = plt.subplots(
-        figsize=(max(10, 0.8 * len(names) + 3), max(4, 0.45 * len(df) + 2))
-    )
+    fig, ax = plt.subplots(figsize=(max(10, 0.8 * len(names) + 3), max(4, 0.45 * len(df) + 2)))
     image = ax.imshow(scores, aspect="auto", cmap="YlGnBu", vmin=0, vmax=1)
     ax.set_xticks(range(len(names)), labels=labels, rotation=45, ha="right")
     ax.set_yticks(range(len(df)), labels=questions)
@@ -105,7 +103,7 @@ def plot_metric_distributions(df, metrics, names, output_dir):
         medianprops={"color": "black"},
     )
 
-    for box, color in zip(boxes["boxes"], colors):
+    for box, color in zip(boxes["boxes"], colors, strict=True):
         box.set_facecolor(color)
         box.set_alpha(0.7)
 

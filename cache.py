@@ -8,7 +8,7 @@ def load_cache():
     if not os.path.exists(CACHE_PATH):
         return {"questions": {}}
 
-    with open(CACHE_PATH, "r", encoding="utf-8") as file:
+    with open(CACHE_PATH, encoding="utf-8") as file:
         return json.load(file)
 
 
