@@ -14,3 +14,27 @@ dependencies = [
     "ragas==0.4.3",
     "sentence-transformers==6.2.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore:The EmbeddingFunction class does not implement build_from_config.*:DeprecationWarning",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = ["models/checkpoints", "db/chroma_db", "plots"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
