@@ -1,5 +1,6 @@
-from models.model import EmbeddModel
 from ragas.embeddings.base import BaseRagasEmbedding
+
+from models.model import EmbeddModel
 
 
 class SharedSentenceTransformerEmbeddings(BaseRagasEmbedding):
@@ -21,6 +22,8 @@ class SharedSentenceTransformerEmbeddings(BaseRagasEmbedding):
         return self.embed_text(text, **kwargs)
 
 
-embd = EmbeddModel()
-model = embd.load_model()
-embeddings = SharedSentenceTransformerEmbeddings(model)
+def create_embeddings(model=None):
+    if model is None:
+        model = EmbeddModel().load_model()
+
+    return SharedSentenceTransformerEmbeddings(model)
