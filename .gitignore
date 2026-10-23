@@ -29,6 +29,9 @@ ragas_results.csv
 plots/
 *.log
 
+# Files uploaded through the Streamlit UI
+documents/uploads/
+
 # Local vector database
 db/chroma_db/
 
