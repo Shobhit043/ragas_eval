@@ -7,19 +7,30 @@ from document_loader import DocumentChunk
 
 
 class DB:
-    def __init__(self, db_path="chroma_db", collection_name="data", model=None):
+    def __init__(self, db_path="chroma_db", collection_name="data", model=None, client=None):
         if model is None:
             raise ValueError("model must be a SentenceTransformer instance")
 
-        if db_path == "chroma_db":
-            db_path = Path(__file__).resolve().parent / db_path
+        if client is None:
+            if db_path == "chroma_db":
+                db_path = Path(__file__).resolve().parent / db_path
 
-        Path(db_path).mkdir(parents=True, exist_ok=True)
+            Path(db_path).mkdir(parents=True, exist_ok=True)
+            client = chromadb.PersistentClient(path=str(db_path))
 
-        self.client = chromadb.PersistentClient(path=str(db_path))
+        self.client = client
         self.collection_name = collection_name
         self.embedding_function = EmbeddingFunction(model)
         self.collection = self._create_collection()
+
+    @classmethod
+    def in_memory(cls, model, collection_name="data"):
+        """Create a database that lives only in memory for the current session."""
+        return cls(
+            collection_name=collection_name,
+            model=model,
+            client=chromadb.EphemeralClient(),
+        )
 
     def _create_collection(self):
         return self.client.get_or_create_collection(

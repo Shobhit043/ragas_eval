@@ -109,7 +109,8 @@ def retrieve_contexts(db_client, question):
     return list(result)
 
 
-async def ensure_answer(cache, db_client, entry, question):
+async def ensure_answer(cache, db_client, entry, question, save=None):
+    save = save or save_cache
     contexts = retrieve_contexts(db_client, question)
 
     if entry.get("response") and entry.get("retrieved_contexts") == contexts:
@@ -120,7 +121,7 @@ async def ensure_answer(cache, db_client, entry, question):
 
     # The previous scores belong to a different answer.
     entry["metrics"] = {}
-    save_cache(cache)
+    save(cache)
 
 
 def prepare_entry(cache, question, reference):
@@ -145,6 +146,57 @@ async def score_metric(spec, sample):
     return float(result.value)
 
 
+async def evaluate_dataset(dataset, db_client, metrics, cache, verbose=False, save=None):
+    """Answer and score every dataset item, returning one row per question."""
+    save = save or save_cache
+    rows = []
+
+    for item in dataset:
+        question = item["question"]
+        reference = item["reference"]
+        entry, entry_updated = prepare_entry(cache, question, reference)
+
+        if entry_updated:
+            save(cache)
+
+        await ensure_answer(cache, db_client, entry, question, save=save)
+
+        sample = {
+            "user_input": question,
+            "response": entry["response"],
+            "retrieved_contexts": entry["retrieved_contexts"],
+            "reference": reference,
+        }
+
+        if verbose:
+            print(f"\nEvaluating: {question}")
+
+        for name, spec in metrics.items():
+            cached_score = entry["metrics"].get(name)
+
+            if cached_score is not None:
+                if verbose:
+                    print(f"  {name}: cached ({cached_score:.4f})")
+                continue
+
+            entry["metrics"][name] = await score_metric(spec, sample)
+            save(cache)
+
+            if verbose:
+                print(f"  {name}: {entry['metrics'][name]:.4f}")
+
+        row = {
+            "user_input": question,
+            "response": entry["response"],
+            "retrieved_contexts": entry["retrieved_contexts"],
+            "reference": reference,
+        }
+        row.update({name: entry["metrics"][name] for name in metrics})
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
 async def main():
     dataset = load_evaluation_dataset()
     chunks = load_chunks(DOCUMENTS_DIR)
@@ -162,48 +214,7 @@ async def main():
     if prune_cache(cache, questions):
         save_cache(cache)
 
-    rows = []
-
-    for item in dataset:
-        question = item["question"]
-        reference = item["reference"]
-        entry, entry_updated = prepare_entry(cache, question, reference)
-
-        if entry_updated:
-            save_cache(cache)
-
-        await ensure_answer(cache, db_client, entry, question)
-
-        sample = {
-            "user_input": question,
-            "response": entry["response"],
-            "retrieved_contexts": entry["retrieved_contexts"],
-            "reference": reference,
-        }
-
-        print(f"\nEvaluating: {question}")
-
-        for name, spec in metrics.items():
-            cached_score = entry["metrics"].get(name)
-
-            if cached_score is not None:
-                print(f"  {name}: cached ({cached_score:.4f})")
-                continue
-
-            entry["metrics"][name] = await score_metric(spec, sample)
-            save_cache(cache)
-            print(f"  {name}: {entry['metrics'][name]:.4f}")
-
-        row = {
-            "user_input": question,
-            "response": entry["response"],
-            "retrieved_contexts": entry["retrieved_contexts"],
-            "reference": reference,
-        }
-        row.update({name: entry["metrics"][name] for name in metrics})
-        rows.append(row)
-
-    df = pd.DataFrame(rows)
+    df = await evaluate_dataset(dataset, db_client, metrics, cache, verbose=True)
 
     print("\n=== RAGAS Evaluation Results ===")
     print(df.to_string(index=False))

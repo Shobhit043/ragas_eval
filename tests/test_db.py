@@ -128,3 +128,14 @@ def test_document_count_survives_reopen(tmp_path):
 
     assert reopened.num_docs == 2
     assert set(reopened.search("alpha")[0]) == {"alpha", "beta"}
+
+
+def test_in_memory_database_does_not_create_a_local_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    database = DB.in_memory(FakeModel(), collection_name="session_test")
+    database.add_documents(make_chunks("alpha"))
+
+    assert database.num_docs == 1
+    assert database.search("alpha")[0] == ["alpha"]
+    assert not (tmp_path / "chroma_db").exists()

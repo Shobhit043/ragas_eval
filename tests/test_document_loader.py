@@ -86,3 +86,63 @@ def test_load_chunks_rejects_missing_directory(tmp_path):
 def test_load_chunks_rejects_invalid_overlap(tmp_path):
     with pytest.raises(ValueError, match="chunk_overlap"):
         document_loader.load_chunks(tmp_path, chunk_size=100, chunk_overlap=100)
+
+
+class FakeUpload:
+    def __init__(self, name, content):
+        self.name = name
+        self.content = content
+
+    def getvalue(self):
+        return self.content
+
+
+def test_load_chunks_from_uploads_uses_file_names_without_writing():
+    chunks = document_loader.load_chunks_from_uploads(
+        [
+            FakeUpload("../notes.txt", b"Uploaded notes."),
+            FakeUpload("ignored.md", b"Ignored."),
+        ],
+        chunk_size=100,
+        chunk_overlap=10,
+    )
+
+    assert [chunk["text"] for chunk in chunks] == ["Uploaded notes."]
+    assert chunks[0]["metadata"]["source"] == "notes.txt"
+
+
+def test_load_chunks_from_uploads_extracts_pdf_pages(monkeypatch):
+    monkeypatch.setattr(document_loader, "PdfReader", lambda source: FakePdfReader())
+
+    chunks = document_loader.load_chunks_from_uploads(
+        [FakeUpload("paper.pdf", b"fake pdf")],
+        chunk_size=100,
+        chunk_overlap=10,
+    )
+
+    assert [chunk["metadata"]["page"] for chunk in chunks] == [1, 3]
+    assert {chunk["text"] for chunk in chunks} == {"First PDF page.", "Third PDF page."}
+
+
+def test_load_chunks_from_uploads_requires_files():
+    with pytest.raises(ValueError, match="Upload at least one"):
+        document_loader.load_chunks_from_uploads([])
+
+
+def test_load_chunks_from_uploads_rejects_unreadable_files():
+    with pytest.raises(ValueError, match="No readable text"):
+        document_loader.load_chunks_from_uploads([FakeUpload("empty.txt", b"   ")])
+
+
+def test_load_chunks_from_uploads_keeps_same_named_files_distinct():
+    chunks = document_loader.load_chunks_from_uploads(
+        [
+            FakeUpload("report.txt", b"First report."),
+            FakeUpload("report.txt", b"Second report."),
+        ],
+        chunk_size=100,
+        chunk_overlap=10,
+    )
+
+    assert {chunk["text"] for chunk in chunks} == {"First report.", "Second report."}
+    assert len({chunk["id"] for chunk in chunks}) == 2

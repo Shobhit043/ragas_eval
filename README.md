@@ -1,47 +1,55 @@
-# RAGAS Evaluation Project
+# RAGAS Evaluation
 
-A small, end-to-end example of evaluating a Retrieval-Augmented Generation (RAG) pipeline with [RAGAS](https://docs.ragas.io/).
+A Retrieval-Augmented Generation (RAG) project with a user-focused Streamlit app and an optional folder-based CLI.
 
-It indexes PDF and text files from a folder, answers questions using a hosted LLM with retrieved context, and scores the answers with eleven RAGAS metrics.
+Users can upload PDF or text files, build a private index for their session, ask questions, and score the answers with [RAGAS](https://docs.ragas.io/). Batch evaluation is supported through an editable table or a JSON upload. Answers are generated with an NVIDIA-hosted model using retrieved context.
 
-## What it does
+## Features
 
-```
-documents/*.pdf, *.txt
-        │
-        ▼
-recursive text splitting ──> embeddings ──> ChromaDB
-                                                │
-question ──> top-5 retrieval ───────────────────┘
-                    │
-                    ▼
-           LLM answer (NVIDIA NIM)
-                    │
-                    ▼
-       RAGAS metrics ──> ragas_results.csv ──> plots/*.png
-```
+### Web UI
 
-For every question the project:
+- Upload multiple `.pdf` and `.txt` files.
+- Build an in-memory ChromaDB index with configurable chunk size and overlap.
+- Keep each user's documents, answers, and results isolated in their Streamlit session.
+- Ask a single question and optionally provide a reference answer.
+- Run a batch by entering question/reference rows or uploading a JSON file.
+- Choose the RAGAS metrics to run.
+- View the results table and three comparison charts.
+- Download the results as CSV and download each chart as a PNG.
+- Reuse answers and scores within the session when rerunning a batch or adding metrics.
 
-1. Recursively finds `.pdf` and `.txt` files in `documents/`.
-2. Extracts text page by page from PDFs and splits everything with `RecursiveCharacterTextSplitter`.
-3. Embeds the chunks with `all-MiniLM-L6-v2`.
-4. Stores them in a local ChromaDB collection with source, page, and chunk metadata.
-5. Retrieves the 5 most similar chunks.
-6. Generates an answer from the retrieved context.
-7. Scores the result, writes a CSV, and generates charts.
+The UI does not write uploads, results, plots, or a cache into the project. A new session starts clean.
+
+### CLI
+
+- Index local files from `documents/`.
+- Evaluate the questions in `eval_dataset.json`.
+- Write `ragas_results.csv`, PNG plots, and a resumable `eval_cache.json`.
+
+## How it works
+
+1. PDF pages and UTF-8 text files are read and split with `RecursiveCharacterTextSplitter`.
+2. Chunks are embedded with `all-MiniLM-L6-v2`.
+3. Embeddings are stored in ChromaDB with source and page metadata.
+4. For each question, the five most similar chunks are retrieved.
+5. The NVIDIA-hosted LLM generates an answer from the retrieved context.
+6. The selected RAGAS metrics score the answer, context, and optional reference.
+7. The app shows the results and provides CSV and PNG downloads.
+
+The UI uses an in-memory ChromaDB client scoped to the Streamlit session. The CLI uses a persistent ChromaDB store under `db/chroma_db/`.
 
 ## Requirements
 
 - Python **3.13+**
 - An [NVIDIA API key](https://build.nvidia.com/)
-- ~1 GB of free disk space (dependencies) plus ~90 MB for the embedding model
+- About 1 GB of free disk space for dependencies
+- About 90 MB for the embedding model
+
+Only text-based PDFs are supported. Scanned image-only PDFs must be OCR'd before upload or ingestion.
 
 ## Setup
 
-Clone the repository, then install the dependencies.
-
-Using `uv` (recommended — resolves from `uv.lock`):
+Using `uv` (recommended, resolves from `uv.lock`):
 
 ```bash
 uv sync
@@ -51,44 +59,169 @@ Using `pip`:
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate        # Windows
+.venv\Scripts\Activate.ps1    # Windows PowerShell
 source .venv/bin/activate     # macOS / Linux
 pip install .
 ```
 
-Create your `.env` file from the template and add your key:
+Create a `.env` file from the template:
 
 ```bash
 cp .env.example .env
 ```
 
+On Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Add your API key:
+
 ```dotenv
 NVIDIA_API_KEY=your-nvidia-api-key-here
 ```
 
-## Add documents
-
-Put `.pdf` and `.txt` files anywhere under `documents/`; subdirectories are scanned recursively. A small sample corpus is included so the project runs out of the box. Replace it with your own files (or add more) when you are ready.
-
-```text
-documents/
-├── sample_corpus.txt
-├── handbook.pdf
-└── policies/
-    └── leave-policy.txt
-```
-
-Only text-based PDFs are supported. Scanned image-only PDFs need OCR before ingestion.
-
-Chunking defaults to 800 characters with 150 characters of overlap. Override them when needed:
+## Run the web UI
 
 ```bash
-uv run ingest.py --chunk-size 1200 --chunk-overlap 200
+uv run streamlit run app.py
 ```
 
-## Evaluation dataset
+### 1. Build an index
 
-Questions and reference answers live in `eval_dataset.json`:
+1. Upload one or more PDF or text files in the sidebar.
+2. Adjust the chunk size and chunk overlap if needed. Defaults are 800 and 150 characters.
+3. Click **Build index**.
+4. Review the indexed chunk count and source file list in the sidebar.
+
+Uploads are processed in memory. They are not saved to `documents/`, and the UI does not create a local ChromaDB collection.
+
+Re-indexing replaces the current session's index and clears previous results and the session cache.
+
+### 2. Ask a single question
+
+In the **Ask a question** tab:
+
+1. Enter a question.
+2. Optionally enter a reference answer.
+3. Choose metrics.
+4. Click **Ask and evaluate**.
+
+Without a reference, only metrics that do not need one are shown. The default single-question metrics are:
+
+- `answer_relevancy`
+- `faithfulness`
+- `response_groundedness`
+
+Providing a reference adds these to the default selection:
+
+- `answer_correctness`
+- `semantic_similarity`
+
+The result includes the generated answer, retrieved contexts, metric scores, and a score chart.
+
+### 3. Run a batch
+
+In the **Batch evaluation** tab, choose one of two input modes.
+
+#### Enter questions directly
+
+Use the editable table to add question/reference rows. Completely blank rows are ignored. A row with a reference but no question shows a validation error.
+
+#### Upload JSON
+
+Upload a UTF-8 JSON file or download the template from the UI:
+
+```json
+[
+  {
+    "question": "What is the main finding?",
+    "reference": "The main finding is ..."
+  },
+  {
+    "question": "Which method was used?",
+    "reference": "The method was ..."
+  }
+]
+```
+
+`reference` is optional. If every question has a reference, all available metrics are selected by default and reference-based metrics become available. If any question lacks a reference, reference-based metrics are hidden and the three core metrics are selected by default.
+
+After a batch run, the UI shows:
+
+- A results table with the answer, contexts, reference, and scores.
+- A **Download CSV** button.
+- An average-score chart, a per-question heatmap, and a score-distribution box plot.
+- A download button for each chart.
+
+Batch artifacts are generated in memory and downloaded directly. The UI does not write `ragas_results.csv`, `plots/`, or `eval_cache.json`.
+
+### Session cache
+
+The UI keeps an in-memory evaluation cache for the current Streamlit session only.
+
+It helps when:
+
+- A batch is rerun after a failure or timeout.
+- More metrics are selected for the same questions.
+- A question appears more than once in a batch.
+- A reference changes: the answer can be reused, but the old metric scores are discarded.
+
+The cache is cleared when the index is rebuilt. It is not shared between users and is lost when the session ends.
+
+## Metrics
+
+The project uses eleven RAGAS metrics:
+
+| Metric | What it checks | Better |
+| --- | --- | --- |
+| `answer_relevancy` | Does the answer address the question? | Higher |
+| `faithfulness` | Is the answer supported by the retrieved context? | Higher |
+| `answer_correctness` | Does the answer agree with the reference? | Higher |
+| `factual_correctness` | How much factual overlap is there with the reference? | Higher |
+| `semantic_similarity` | How similar are the answer and reference embeddings? | Higher |
+| `context_precision` | Is the retrieved context relevant? | Higher |
+| `context_recall` | Does the context cover what the reference needs? | Higher |
+| `context_entity_recall` | Are the reference's entities present in the context? | Higher |
+| `response_groundedness` | Is the response grounded in the retrieved context? | Higher |
+| `context_utilization` | Was the useful context actually used? | Higher |
+| `noise_sensitivity` | How often is the answer misled by noise? | Lower |
+
+Scores are floats between 0 and 1. Metrics that use an LLM add API calls for every question.
+
+## CLI usage
+
+The CLI is a separate folder-based workflow for local development.
+
+### Index local documents
+
+Place `.pdf` and `.txt` files under `documents/`. Subdirectories are scanned recursively. A sample corpus is included.
+
+```bash
+uv run ingest.py
+```
+
+Useful options:
+
+```bash
+uv run ingest.py \
+  --documents-dir documents \
+  --chunk-size 1200 \
+  --chunk-overlap 200
+```
+
+Use `--append` to keep existing chunks instead of replacing the collection:
+
+```bash
+uv run ingest.py --append
+```
+
+Use `--db-path` and `--collection` to choose the ChromaDB location and collection name. The default collection is stored in `db/chroma_db/`.
+
+### Evaluate a dataset
+
+Edit `eval_dataset.json`:
 
 ```json
 [
@@ -99,55 +232,51 @@ Questions and reference answers live in `eval_dataset.json`:
 ]
 ```
 
-Add or edit entries to evaluate different questions. The cache prunes questions that are no longer present, and scores are invalidated automatically when a reference answer changes.
+Both `question` and `reference` are required in the CLI dataset.
 
-## Run
-
-`eval.py` rebuilds the ChromaDB collection from `documents/` on every run:
+Run the full evaluation:
 
 ```bash
 uv run eval.py
 ```
 
-To rebuild the index without running the evaluation:
+`eval.py` rebuilds the local index from `documents/`, evaluates every dataset item with all eleven metrics, and writes:
 
-```bash
-uv run ingest.py
+- `ragas_results.csv`
+- `plots/average_metric_scores.png`
+- `plots/metric_scores_by_question.png`
+- `plots/metric_score_distributions.png`
+- `eval_cache.json`
+
+The CLI cache is keyed by question and metric. It is pruned when questions are removed from `eval_dataset.json`. Cached answers are reused only when the retrieved contexts still match, and scores are discarded when the reference or answer changes.
+
+## Project layout
+
+```text
+.
+|-- app.py                      # Streamlit UI: uploads, single questions, batches
+|-- eval.py                     # RAGAS metrics, evaluation flow, and CLI entry point
+|-- ingest.py                   # CLI index builder
+|-- document_loader.py          # PDF/TXT loading, chunking, and upload handling
+|-- plots.py                    # Result charts
+|-- llm.py                      # NVIDIA client, retries, and answer generation
+|-- embeddings.py               # RAGAS embedding adapter
+|-- cache.py                    # CLI cache helpers
+|-- db/
+|   |-- chroma.py               # ChromaDB wrapper and in-memory database factory
+|   `-- embedding_func.py       # Chroma embedding function
+|-- models/
+|   `-- model.py                # Downloads and loads all-MiniLM-L6-v2
+|-- documents/
+|   `-- sample_corpus.txt       # Sample CLI corpus
+|-- eval_dataset.json           # CLI questions and reference answers
+|-- assets/                     # Example chart images
+|-- tests/                      # Test suite with fake models and temporary databases
+|-- .streamlit/config.toml      # Streamlit settings
+|-- .github/workflows/ci.yml    # Lint, format check, and tests
+|-- pyproject.toml              # Dependencies and tool configuration
+`-- uv.lock                     # Resolved dependency lockfile
 ```
-
-Use `--append` to keep existing chunks and upsert new ones by their stable IDs:
-
-```bash
-uv run ingest.py --append
-```
-
-Or, with the venv activated:
-
-```bash
-python eval.py
-python ingest.py
-```
-
-The first run downloads the embedding model to `models/checkpoints/` (about 90 MB) and is slower than subsequent runs.
-
-## Web UI
-
-A small Streamlit app is included for interactive testing:
-
-```bash
-uv run streamlit run app.py
-```
-
-The UI lets you:
-
-- Upload PDF or text files and rebuild the ChromaDB index with custom chunk settings.
-- Ask any question about the indexed documents.
-- Optionally provide a reference answer to unlock reference-based metrics.
-- Inspect the generated answer, retrieved contexts, and per-metric scores.
-
-Metrics that need a reference answer are hidden until you provide one. For the full dataset, CSV output, and plots, run `uv run eval.py`.
-
-The UI disables Streamlit's file watcher in `.streamlit/config.toml` to avoid a watcher bug where Transformers probes optional `torchvision` modules.
 
 ## Development
 
@@ -159,112 +288,28 @@ uv run ruff format --check .
 uv run pytest
 ```
 
-The tests use fake models and temporary directories, so they do not need an API key or a model download. CI runs linting, formatting checks, and the test suite on every push and pull request (`.github/workflows/ci.yml`).
-
-## Output
-
-- `ragas_results.csv` — one row per question with the answer, retrieved contexts, reference answer, and metric scores.
-- `plots/` — charts generated after the CSV is written (created at runtime):
-  - `average_metric_scores.png` — average score per metric.
-  - `metric_scores_by_question.png` — heatmap of every question against every metric.
-  - `metric_score_distributions.png` — box plot of each metric's spread.
-- `eval_cache.json` — intermediate cache so a run can resume without paying for the same LLM calls twice.
-- `db/chroma_db/` — the persistent ChromaDB store.
-
-The generated outputs above are ignored by git. The example charts in `assets/` are committed so they render in this README; running the evaluation overwrites only `plots/`, not `assets/`.
-
-## Example plots
-
-These were generated from the current sample run. Your own scores will differ, but the layout is the same.
-
-### Average score per metric
-
-![Average score per metric](assets/average_metric_scores.png)
-
-### Metric scores by question
-
-![Metric scores by question](assets/metric_scores_by_question.png)
-
-### Score distribution per metric
-
-![Score distribution per metric](assets/metric_score_distributions.png)
-
-## Metrics
-
-The evaluation in `eval.py` uses the RAGAS `collections` metrics:
-
-| Metric | What it checks |
-| --- | --- |
-| `answer_relevancy` | Does the answer actually address the question? |
-| `faithfulness` | Is the answer supported by the retrieved context? |
-| `answer_correctness` | Does the answer agree with the reference (facts + meaning)? |
-| `factual_correctness` | How much factual overlap is there with the reference? |
-| `semantic_similarity` | Embedding similarity between the answer and reference. |
-| `context_precision` | Is the retrieved context relevant? |
-| `context_recall` | Does the context cover what the reference answer needs? |
-| `context_entity_recall` | Are the reference's entities present in the context? |
-| `response_groundedness` | Is the response grounded in the retrieved context? |
-| `context_utilization` | Was the useful retrieved context actually used? |
-| `noise_sensitivity` | How often the answer is misled by noise (lower is better). |
-
-All scores are floats between 0 and 1. Every metric except `noise_sensitivity` is better when higher.
-
-Adding a metric is a single entry in `build_metrics()` in `eval.py`: provide the scorer and the sample fields it needs (`user_input`, `response`, `retrieved_contexts`, `reference`). The pipeline handles inputs, caching, CSV columns, averages, and plots automatically.
-
-> Each LLM-based metric adds API calls per question. Remove entries from `build_metrics()` if you want a cheaper run.
-
-## Project layout
-
-```
-.
-├── documents/              # Input .pdf and .txt files (sample corpus included)
-├── eval_dataset.json       # Questions and reference answers for evaluation
-├── eval.py                 # Main pipeline + RAGAS evaluation
-├── app.py                  # Streamlit UI for indexing and single-question evaluation
-├── .streamlit/config.toml  # Streamlit settings (disables the file watcher)
-├── ingest.py               # CLI for building the ChromaDB index
-├── document_loader.py      # Recursive PDF/TXT loading and chunking
-├── plots.py                # Chart generation from the results DataFrame
-├── assets/                 # Example charts embedded in this README
-├── llm.py                  # NVIDIA client, retry logic, RAGAS LLM wrapper
-├── embeddings.py           # Ragas adapter around the shared SentenceTransformer
-├── cache.py                # JSON cache load/save helpers
-├── db/
-│   ├── chroma.py           # ChromaDB wrapper (upsert, search, delete, clear)
-│   └── embedding_func.py   # Chroma embedding function
-├── models/
-│   └── model.py            # Downloads/loads all-MiniLM-L6-v2
-├── tests/                  # Pytest suite with fake models and temp DBs
-├── .github/workflows/ci.yml # Lint, format check, and tests
-├── pyproject.toml          # Project metadata, dependencies, and tool config
-└── uv.lock                 # Fully resolved dependency lockfile
-```
-
-## How it works
-
-**Embeddings are shared.** `models/model.py` loads one `SentenceTransformer`, and both ChromaDB (`db/embedding_func.py`) and RAGAS (`embeddings.py`) use it. This keeps retrieval and evaluation embeddings consistent.
-
-**The LLM client is async and retries.** `llm.py` talks to the NVIDIA OpenAI-compatible endpoint and retries rate-limit, timeout, connection, and 5xx errors with exponential backoff, honoring the `retry-after` header.
-
-**Chunking is recursive and metadata-aware.** `document_loader.py` extracts text page by page from PDFs, reads UTF-8 text files, and uses LangChain's `RecursiveCharacterTextSplitter`. Every chunk keeps its relative source path, PDF page number, and chunk index. Stable IDs are derived from the source, page, and chunk index, so re-ingesting the same file updates existing chunks instead of duplicating them.
-
-**Caching is per question and per metric.** `eval.py` stores the answer, retrieved contexts, reference, and each metric score in `eval_cache.json`. Cached metrics are printed as `cached` and skipped, so adding a metric only scores that metric instead of redoing the whole run. Entries for questions no longer in `eval_dataset.json` are pruned automatically on load. Cached answers are reused only when freshly retrieved contexts match; otherwise the answer and its scores are regenerated. Every computed answer and metric is saved immediately, so an interrupted run keeps its progress. If the answer or reference for a question changes, its old scores are discarded automatically. To force a full re-evaluation, delete `eval_cache.json`.
-
-**Plots are generated after the CSV.** `plots.py` creates the `plots/` directory if it does not exist, then writes the average-score bar chart, the question-by-metric heatmap, and the score-distribution box plot. Runtime output goes to `plots/` and is overwritten on each run; the copies in `assets/` are kept for this README.
-
-**The database is rebuilt on each evaluation run.** `eval.py` replaces the collection contents with chunks from the current `documents/` folder, so the CSV always reflects the current files.
+The tests use fake models and temporary directories. They do not need an API key or a real model download. CI runs linting, formatting checks, and the test suite on every push and pull request.
 
 ## Troubleshooting
 
-- **`ValueError: NVIDIA_API_KEY is missing from your .env file`** — create `.env` from `.env.example` and add your key.
-- **`No .pdf or .txt files found`** — add files under `documents/` or pass `--documents-dir`.
-- **`No readable text found`** — the PDFs may be scanned images, or the text files may be empty. Run OCR first for image-only PDFs.
-- **First run seems stuck** — it is downloading the embedding model. Later runs load it from `models/checkpoints/`.
-- **Frequent rate limits** — lower `max_attempts` or increase `base_wait` in `llm.py:53`, or use a different model.
-- **Poor retrieval** — tune `--chunk-size` and `--chunk-overlap` for your documents, then re-run `ingest.py` or `eval.py`.
-- **Stale results** — delete `eval_cache.json` (and optionally `ragas_results.csv`) and run again.
+**`NVIDIA_API_KEY is missing`**
+Create `.env` from `.env.example` and add a valid key.
+
+**No text can be indexed**
+The PDF may be image-only. Run OCR first. Empty text files are also ignored.
+
+**The first run is slow**
+The embedding model is being downloaded to `models/checkpoints/`. Later runs load the saved copy.
+
+**The UI index disappeared**
+The UI index is session-scoped. A new session or page refresh starts with an empty index, so upload and rebuild.
+
+**Rate limits or timeouts**
+The LLM client retries transient errors with exponential backoff. For frequent rate limits, reduce the number of metrics or wait before retrying.
 
 ## Notes
 
-- `langchain-community` is pinned to `0.3.31` because RAGAS 0.4.3 imports a module that newer versions removed.
-- `models/checkpoints/`, `.venv/`, `.env`, UI uploads, and the generated evaluation files (`plots/`, CSV, cache, ChromaDB) are git-ignored. The example images in `assets/` are intentionally committed.
+- The Streamlit app keeps uploads, vectors, answers, results, plots, and its cache in memory. Only the shared embedding model is stored locally under `models/checkpoints/`.
+- The CLI keeps its ChromaDB, cache, CSV, and plots on disk.
+- Streamlit's file watcher is disabled in `.streamlit/config.toml` to avoid a watcher probe for the optional `torchvision` package.
+- `langchain-community` is pinned to `0.3.31` for compatibility with RAGAS 0.4.3.

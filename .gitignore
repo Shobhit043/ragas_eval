@@ -29,7 +29,7 @@ ragas_results.csv
 plots/
 *.log
 
-# Files uploaded through the Streamlit UI
+# Legacy local uploads (the UI now keeps uploads in memory)
 documents/uploads/
 
 # Local vector database
